@@ -3,33 +3,31 @@
 #include "nyanCat18.c"
 
 const int nLeds=36;
+unsigned int rownum = 0;
+const unsigned char *rowBuffer = &nyanCat_Image.pixel_data[nyanCat_Image.width*3*rownum];
+unsigned int imageHeight = nyanCat_Image.height;
 
 SPISettings LEDsettings = SPISettings(4000000, MSBFIRST, SPI_MODE0);
 SPISettings MPUsettings = SPISettings(4000000, MSBFIRST, SPI_MODE0);
 
-
-void setup() {
-
-  SPI.setMOSI(11);
-  SPI.setSCK(13);
-  SPI.begin();
-  
+void inline SPIled(){
   SPI.setMOSI(7);
   SPI.setSCK(14);
-  SPI.begin();
-  
+  SPI.beginTransaction(LEDsettings);
+}
+void inline SPImpu(){
+  SPI.setMOSI(11);
+  SPI.setSCK(13);
+  SPI.beginTransaction(MPUsettings);
 }
 
 
 
-unsigned int rownum = 0;
-const unsigned char *rowBuffer = &nyanCat_Image.pixel_data[nyanCat_Image.width*3*rownum];
-unsigned int imageHeight = nyanCat_Image.height;
-void loop() {
+void setLeds(unsigned int rownum){
 
   rowBuffer = &nyanCat_Image.pixel_data[nyanCat_Image.width*3*rownum];
 
-  SPI.beginTransaction(LEDsettings);
+  SPIled();
   //start message;
   SPI.transfer(0x00);
   SPI.transfer(0x00);
@@ -62,6 +60,23 @@ void loop() {
 
   SPI.endTransaction();
 
+}
+
+
+void setup() {
+
+  SPI.setMOSI(11);
+  SPI.setSCK(13);
+  SPI.begin();
+  
+  SPI.setMOSI(7);
+  SPI.setSCK(14);
+  SPI.begin();
+  
+}
+
+void loop() {
+  setLeds(rownum);
   delay(1);
 
   rownum += 1;
