@@ -24,7 +24,6 @@ Teensy 3.0 pinout
 
 
 
-
 #include <SPI.h>
 #include "nyanCat18.c"
 
@@ -47,13 +46,18 @@ void inline SPIimu(){
 
 //********LED variables
 
+//which side faces the body?
+const bool RightHanded = false;
+//the apa102 has 5 bits controlling global brightness
+unsigned char brightness = 15;
+
 const int nLeds=36;
 int rowNum = 0; //the current pixel number
 
 const unsigned char *rowBuffer = &nyanCat_Image.pixel_data[nyanCat_Image.width*3*rowNum];
 unsigned int imageHeight = nyanCat_Image.height;
 
-
+unsigned char apaHeader = brightness | 0xE0;
 
 //********IMU variables
 
@@ -114,22 +118,24 @@ void setLeds(int rownum){
   SPI.transfer(0x00);
   SPI.transfer(0x00);
   
-  for(int i=0; i<(nLeds/2); i++){
-    SPI.transfer(0xE1); //brightness
-    //SPI.transfer(0xFF); //brightness
-    const unsigned char *pixelBuffer = &rowBuffer[3*i];
-    SPI.transfer(pixelBuffer[2]);
-    SPI.transfer(pixelBuffer[1]);
-    SPI.transfer(pixelBuffer[0]);
-  }
+  if(RightHanded){
+    for(int i=0; i<nLeds; i++){
+      const unsigned char *pixelBuffer = &rowBuffer[3*i];
 
-  for(int i=(nLeds/2)-1; i>=0; i--){
-    SPI.transfer(0xE1); //brightness
-    //SPI.transfer(0xFF); //brightness
-    const unsigned char *pixelBuffer = &rowBuffer[3*i];
-    SPI.transfer(pixelBuffer[2]);
-    SPI.transfer(pixelBuffer[1]);
-    SPI.transfer(pixelBuffer[0]);
+      SPI.transfer(apaHeader);      //brightness
+      SPI.transfer(pixelBuffer[2]); //B
+      SPI.transfer(pixelBuffer[1]); //G
+      SPI.transfer(pixelBuffer[0]); //R
+    }
+  }else{
+    for(int i=(nLeds-1); i>=0; i--){
+      const unsigned char *pixelBuffer = &rowBuffer[3*i];
+
+      SPI.transfer(apaHeader);      //brightness
+      SPI.transfer(pixelBuffer[2]); //B
+      SPI.transfer(pixelBuffer[1]); //G
+      SPI.transfer(pixelBuffer[0]); //R
+    }
   }
 
   //end message;
@@ -280,7 +286,7 @@ void loop() {
       rowNum  += 1;
       //Serial.print("++rowNum = ");
       //Serial.println(rowNum);
-      if(rowNum>=imageHeight) rowNum = 0;
+      if(rowNum>=(int)imageHeight) rowNum = 0;
       setLeds(rowNum);
     }else if(partPix < -1.0){ //hysteresis for change of direction
       partPix += 1;
