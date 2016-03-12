@@ -26,6 +26,7 @@ Teensy 3.0 pinout
 
 #include <SPI.h>
 #include "nyanCat18.c"
+//#include "Congress32c3.c"
 
 //********SPI variables
 
@@ -47,15 +48,21 @@ void inline SPIimu(){
 //********LED variables
 
 //which side faces the body?
-const bool RightHanded = false;
+const bool RightHanded = true;
+//const bool RightHanded = false;
 //the apa102 has 5 bits controlling global brightness
-unsigned char brightness = 15;
+unsigned char brightness = 0x1F;
 
 const int nLeds=36;
 int rowNum = 0; //the current pixel number
 
-const unsigned char *rowBuffer = &nyanCat_Image.pixel_data[nyanCat_Image.width*3*rowNum];
+
+
+//const unsigned char *rowBuffer = &congress32c3_image.pixel_data[nLeds*3*rowNum];
+//unsigned int imageHeight = congress32c3_image.height;
+const unsigned char *rowBuffer = &nyanCat_Image.pixel_data[nLeds*3*rowNum];
 unsigned int imageHeight = nyanCat_Image.height;
+
 
 unsigned char apaHeader = brightness | 0xE0;
 
@@ -87,7 +94,7 @@ const float pi = 4*atan(1);
 const float gyroDegScale = 1.0/16.4; //LSB/ degrees/s
 const float gyroRadScale = gyroDegScale * pi / 180.0; //rad/s/LSB
 
-const float stringLen = 0.6;  //1m string
+const float stringLen = 0.4;  //1m string
 const float imageCirc = 2*pi*stringLen;
 const float pixelSize = 0.006;  //6mm pixels
 const int nPixCirc = floor(imageCirc/pixelSize);  //number of pixels in the circumfrence
@@ -109,7 +116,8 @@ uint32_t lastMoCap = 0;
 
 void setLeds(int rownum){
 
-  rowBuffer = &nyanCat_Image.pixel_data[nyanCat_Image.width*3*rownum];
+  rowBuffer = &nyanCat_Image.pixel_data[nLeds*3*rownum];
+  //rowBuffer = &congress32c3_image.pixel_data[nLeds*3*rowNum];
 
   SPIled();
   //start message;
