@@ -29,10 +29,11 @@ Teensy 3.0 pinout
 //#include "Congress32c3.c"
 
 //********SPI variables
-
+//these set the speed and mode settings for different SPI profiles on the Teensy
 SPISettings LEDsettings = SPISettings(4000000, MSBFIRST, SPI_MODE0);
 SPISettings IMUsettings = SPISettings(4000000, MSBFIRST, SPI_MODE0);
 
+//These inline functions set the pinouts of the SPI port to suit the different devices
 void inline SPIled(){
   SPI.setMOSI(7);
   SPI.setSCK(14);
@@ -43,28 +44,29 @@ void inline SPIimu(){
   SPI.setSCK(13);
   SPI.beginTransaction(IMUsettings);
 }
-
+const int slaveSelectPin = 10;  //only used by the IMU.
 
 //********LED variables
 
 //which side faces the body?
 const bool RightHanded = true;
 //const bool RightHanded = false;
-//the apa102 has 5 bits controlling global brightness
+//the apa102 has 5 bits controlling global brightness.
 unsigned char brightness = 0x1F;
+unsigned char apaHeader = brightness | 0xE0;
 
+
+//number of LEDs in the entire device
 const int nLeds=36;
-int rowNum = 0; //the current pixel number
+int rowNum = 0; //the current row of the image being displayed
 
 
-
+//********Grab the actual image file properties
 //const unsigned char *rowBuffer = &congress32c3_image.pixel_data[nLeds*3*rowNum];
 //unsigned int imageHeight = congress32c3_image.height;
 const unsigned char *rowBuffer = &nyanCat_Image.pixel_data[nLeds*3*rowNum];
 unsigned int imageHeight = nyanCat_Image.height;
 
-
-unsigned char apaHeader = brightness | 0xE0;
 
 //********IMU variables
 
@@ -87,9 +89,10 @@ mpu9250config mpu9250configs[nConfigs] = {
 };
 
 
-const int slaveSelectPin = 10;
+//fetch pi to as much resolution as the platform can give us
 const float pi = 4*atan(1);
 
+//*********Sort out some physical constants of the string/swing arc etc
 //full scale select; FS_SEL = 3
 const float gyroDegScale = 1.0/16.4; //LSB/ degrees/s
 const float gyroRadScale = gyroDegScale * pi / 180.0; //rad/s/LSB
@@ -100,9 +103,10 @@ const float pixelSize = 0.006;  //6mm pixels
 const int nPixCirc = floor(imageCirc/pixelSize);  //number of pixels in the circumfrence
 const float radPerPix = 2*pi/(float)nPixCirc;  //radians per pixel
 
+
 float partPix = 0; //position through the current pixel, this is the target of gyro integration
 
-uint32_t newtime = 0;
+uint32_t newtime = 0; //some values to handle elapsed time
 uint32_t oldtime = 0;
 uint32_t timestep = 0;
 
@@ -115,17 +119,19 @@ uint32_t lastMoCap = 0;
 
 
 void setLeds(int rownum){
-
+  //grab the next row from the image
   rowBuffer = &nyanCat_Image.pixel_data[nLeds*3*rownum];
   //rowBuffer = &congress32c3_image.pixel_data[nLeds*3*rowNum];
 
+  //set the SPI pins to suit the LEDs
   SPIled();
-  //start message;
+  //start message; (the LEDs want a blank space to start)
   SPI.transfer(0x00);
   SPI.transfer(0x00);
   SPI.transfer(0x00);
   SPI.transfer(0x00);
   
+  //transmit the row to the LED forwards on the right, or backwards on the left
   if(RightHanded){
     for(int i=0; i<nLeds; i++){
       const unsigned char *pixelBuffer = &rowBuffer[3*i];
@@ -146,12 +152,12 @@ void setLeds(int rownum){
     }
   }
 
-  //end message;
+  //end message; (the LEDs want a solid space to end)
   SPI.transfer(0xFF);
   SPI.transfer(0xFF);
   SPI.transfer(0xFF);
   SPI.transfer(0xFF);
-
+  //tell the Teensy's library that we're done here
   SPI.endTransaction();
 
 }
@@ -200,8 +206,9 @@ int16_t val(uint8_t *a){
   return r;
 }
 
-void printMotion(uint8_t *Din){
 
+//Print some debug stuff about the IMU
+void printMotion(uint8_t *Din){
   Serial.print("\naccel: ");
   Serial.print(val(&Din[0]));
   Serial.print(",\t");
@@ -247,6 +254,7 @@ void setup() {
   Dout[0] = 0xAA;
   uint8_t *Din = Dout;
 
+  //can we communicate with IMU?
   Din = ReadRegs(0x75, Dout, 1);
   if(Din[0] == 0x71){
     Serial.println("read from mpu9250 success!");
@@ -256,11 +264,12 @@ void setup() {
     }
   }
   
+  //write all of our configurations to the IMU
   for(int i = 0; i<nConfigs; i++){
-
     WriteRegs(mpu9250configs[i].address, &mpu9250configs[i].value, 1);
   }
 
+  //remember how long we took to boot
   oldtime = micros();
   lastMoCap = oldtime;
 
@@ -268,20 +277,23 @@ void setup() {
 }
 
 void loop() {
-
+  //how long has elepsed since the beginning of the last loop or boot?
   oldtime = newtime;
   newtime = micros();
   timestep = newtime-oldtime;
   
+  //don't run the integral too often, come back later if you have to.
   if(newtime - lastMoCap >  motionPeriod){
     lastMoCap += motionPeriod;
     
-    uint8_t Dout[18] = {0};
-    uint8_t *Din = Dout;
-    Din = ReadRegs(0x3B, Dout, 18);  
-    float radPerSec = gyroRadScale*val(&Din[12]); //gyroZ axis measures the plane
-    partPix += radPerSec*((float)timestep/ 1000000.0) / radPerPix;
+    //grab some memory to hold information about how we're moving
+    uint8_t Dout[18] = {0}; //set it to zeroes
+    uint8_t *Din = Dout;  //get a pointer to the first element
+    Din = ReadRegs(0x3B, Dout, 18);  //read all of the motion data off the IMU chip into memory
+    float radPerSec = gyroRadScale*val(&Din[12]); //gyroZ axis (12th byte) measures the plane
+    partPix += radPerSec*((float)timestep/ 1000000.0) / radPerPix;  //integrate the motion to a real angle
 
+    //if something went wrong with the integral, say so over serial.
     if(partPix > 2.0){
       Serial.println("overflow");
     }else if(partPix < -2.0){
@@ -289,12 +301,13 @@ void loop() {
     }
     
     
+    //if the integral has advanced by a whole pixel, advance the row buffer through the image
     if(partPix > 1.0){
       partPix -= 1;
       rowNum  += 1;
       //Serial.print("++rowNum = ");
       //Serial.println(rowNum);
-      if(rowNum>=(int)imageHeight) rowNum = 0;
+      if(rowNum>=(int)imageHeight) rowNum = 0;  //loop if the image is done
       setLeds(rowNum);
     }else if(partPix < -1.0){ //hysteresis for change of direction
       partPix += 1;
